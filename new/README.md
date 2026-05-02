@@ -1,152 +1,93 @@
-# COMP2113 / ENGG1340 — Group Project: Mini Magic Tower
+# Mini Magic Tower
 
-Console maze RPG (Magic Tower–style). The player starts at the top-left, moves on a randomly generated map, collects items, fights monsters automatically, and **wins by defeating the Boss** at the bottom-right.
+Text-mode maze RPG inspired by Magic Tower. Move from the top-left, fight monsters, collect items, and defeat the **Boss** at the bottom-right.
 
-> **Before submission:** replace all `<Name>` / `<UID>` placeholders below with **real names and HKU UIDs** (as required for Stage 2).
+## Team
 
----
+Replace placeholders before you submit.
 
-## 1. Team roster (required)
+| | Name | UID |
+|--|------|-----|
+| A (Leader) | `<Name>` | `<UID>` |
+| B | `<Name>` | `<UID>` |
+| C | `<Name>` | `<UID>` |
+| D | `<Name>` | `<UID>` |
+| E | `<Name>` | `<UID>` |
 
-| Role | Name | UID |
-|------|------|-----|
-| Member A (Team Leader) | `<Name>` | `<UID>` |
-| Member B | `<Name>` | `<UID>` |
-| Member C | `<Name>` | `<UID>` |
-| Member D | `<Name>` | `<UID>` |
-| Member E | `<Name>` | `<UID>` |
+## Work distribution
 
----
+### A — Team leader (heavier load)
 
-## 2. Game description (required)
+- Overall structure: `main`, `game`, wiring between modules  
+- Game loop, replay, difficulty selection, map validation / simulation / reroll  
+- Integration, testing, fixing cross-module issues  
 
-- **Goal:** Reach the bottom-right corner and **defeat the Boss** (`B`).
-- **Movement:** `WASD` (single key, no Enter).
-- **Combat:** Stepping onto a monster tile triggers **automatic turn-based combat**; results appear in the on-screen log.
-- **Stats:** Player **HP / ATK / DEF**; regular monsters show **HP** and **effective damage vs current DEF** in the HUD; the Boss panel shows **HP / ATK / DEF**.
-- **Items:** **H** Potion (+HP), **S** Sword (+ATK), **D** Shield (+DEF); picking them up applies effects immediately.
-- **Difficulty:** **Easy / Medium / Hard** change map size, monster counts, item counts, and scaling.
-- **Persistence:** **Save / load** to slot files `save1.dat` … `save5.dat`.
-- **Fairness:** Map generation keeps a **reachable path** to the goal; an internal **simulation** rejects unfair seeds and may adjust balance so a viable route exists.
+### B — Combat & player
 
----
+- Player HP / ATK / DEF, combat rules, win/lose  
+- Items (potion / sword / shield) and combat log text  
 
-## 3. Course requirement compliance (required mapping)
+### C — Map & UI
 
-This table maps the **official project requirements** (as summarized in the course brief: randomness, data structures, dynamic memory, file I/O, multi-file program, multiple difficulties) to **concrete features in this repository**.
+- Map generation, walkability  
+- Terminal rendering: map frame, HUD, help / hints  
 
-| Requirement | How this project satisfies it | Primary files |
-|-------------|-------------------------------|----------------|
-| **Randomness / random events** | Random maze layout (walls/floors), random placement of monsters and items subject to reachability and playability checks | `map.cpp`, `game.cpp` |
-| **Data structures** | `struct`/`enum` for player, monsters, items, positions, difficulty config; `std::vector`, `std::deque`, `std::string` for paths and logs | `common.h`, `game.cpp` |
-| **Dynamic memory management** | `char**` map via `new[]`/`delete[]`; monster and item arrays dynamically allocated and freed on restart / load | `map.cpp`, `game.cpp`, `io.cpp` |
-| **File input and output** | Full game state serialized to disk; **5 independent save slots** | `io.cpp`, `io.h`, `game.cpp` |
-| **Multiple source files** | Modular `.h/.cpp` split by responsibility (see §4) | whole `new/` tree |
-| **Multiple difficulty levels** | Three presets with distinct map size and entity parameters | `difficulty.cpp`, `game.cpp` |
+### D — Monsters & balance
 
-**Third-party / non-standard libraries:** **None.** The project uses **ISO C++17** and the **C++ standard library** only (e.g. `<iostream>`, `<fstream>`, `<string>`, `<vector>`, `<deque>`, `<queue>`, `<algorithm>`).
+- Monster types, stats, placement  
+- Boss tuning and random-map balance  
 
----
+### E — Files & build
 
-## 4. Source file map (multi-file layout)
+- Save/load format, slots `save1.dat` … `save5.dat`  
+- `Makefile`, `.gitignore`, README upkeep  
 
-| File | Responsibility |
-|------|------------------|
-| `main.cpp` | Entry point, main menu, difficulty / continue / quit, replay loop |
-| `game.h` / `game.cpp` | Core game loop, entity placement, combat, path checks, balancing hooks |
-| `map.h` / `map.cpp` | Dynamic map allocation, maze-style generation, walkability |
-| `renderer.h` / `renderer.cpp` | Terminal UI: map frame, HUD, logs |
-| `io.h` / `io.cpp` | Save/load serialization |
-| `difficulty.h` / `difficulty.cpp` | Per-difficulty numeric configuration |
-| `common.h` / `common.cpp` | Shared types and display helpers |
-| `input.h` / `input.cpp` | Immediate single-key input (platform-specific where needed) |
-| `Makefile` | Build rule for Linux / academy environment |
+## Features
 
----
+- Three difficulties (Easy / Medium / Hard)  
+- Random map with a viable path; optional simulation / balance passes  
+- Auto-combat, items, HUD + boss panel  
+- Five save slots, single-key input, in-game help  
 
-## 5. Build and run
+## Requirements
 
-### Linux / HKU Academy Server (required verification target)
+- C++17 compiler (`g++` recommended)  
+- Standard library only  
+
+## Build
+
+**Linux / macOS**
 
 ```bash
-cd new
 make
 ./mini_magic_tower
 ```
 
-> **Teaching team expectation:** confirm `make` succeeds on the **course-provided Linux environment** before final submission (do not rely only on Windows).
-
-### Windows (PowerShell, if `make` is unavailable)
+**Windows (PowerShell)**
 
 ```powershell
-cd new
 $src = (Get-ChildItem -Filter "*.cpp" | ForEach-Object { $_.FullName })
 g++ -std=c++17 -Wall -Wextra -g $src -o mini_magic_tower.exe
 .\mini_magic_tower.exe
 ```
 
-**Clean build artifacts (optional):** `make clean` (Linux) or delete `*.o`, `*.exe`, `save*.dat` locally. The repository `.gitignore` excludes binaries and save files from Git.
+`make clean` removes objects, binary, and `save*.dat` (see `Makefile`).
 
----
+## Controls
 
-## 6. Controls
+**Menu:** `1`–`3` new game (easy/medium/hard), `4` continue then slot `1`–`5`, `Q` quit.
 
-### Main menu
+**In game:** `WASD` move; `P` / `L` then slot `1`–`5` to save/load; `H` help; `Q` quit run.
 
-| Key | Action |
-|-----|--------|
-| `1` / `2` / `3` | New game: Easy / Medium / Hard |
-| `4` | Continue — then press `1`–`5` for save slot (`Esc` cancels) |
-| `Q` | Quit program |
+## Project layout
 
-### In-game
-
-| Key | Action |
-|-----|--------|
-| `W` `A` `S` `D` | Move (single key) |
-| `P` then `1`–`5` | Save to slot (`Esc` cancels) |
-| `L` then `1`–`5` | Load from slot (`Esc` cancels) |
-| `H` | Help screen (any key to return) |
-| `Q` | End current run |
-
----
-
-## 7. Work distribution (for TA / group record)
-
-### Member A (Team Leader) — integration & core systems
-
-- Architecture, `main` / `game` flow, replay, difficulty wiring, map validity & simulation pipeline, integration testing.
-
-### Member B — combat & progression
-
-- Player stats, combat resolution, item effects, combat logs.
-
-### Member C — map & rendering
-
-- Map generation, walkability, HUD layout, terminal rendering.
-
-### Member D — monsters & random content
-
-- Monster types and placement rules, boss behaviour, balance with random maps.
-
-### Member E — I/O & tooling
-
-- Save format, multi-slot files, `Makefile`, `.gitignore`, README maintenance.
-
----
-
-## 8. Demo video checklist (≤ 3 minutes, typical requirement)
-
-1. **Intro (≈20–30 s):** game name + **all member names and UIDs** (must match README).
-2. **Gameplay (≈60 s):** movement, combat, items, HUD (player + monsters + boss).
-3. **Save/load (≈40 s):** save to a slot, load from another slot or after restart.
-4. **Difficulty (≈20 s):** show at least two different levels or parameters.
-5. **Wrap-up (≈20 s):** point to **§3 requirement table** — how the project meets each rubric line.
-
----
-
-## 9. Submission hygiene
-
-- Fill **§1 Team roster** with real data.
-- Run **`make`** on the **academy Linux host** and fix any portability issues before the deadline.
-- Do **not** commit `*.exe` or `save*.dat` if your course requires a source-only repo (already listed in `.gitignore`).
+| Module | Files |
+|--------|--------|
+| Entry & menu | `main.cpp` |
+| Core logic | `game.cpp`, `game.h` |
+| Map | `map.cpp`, `map.h` |
+| Draw | `renderer.cpp`, `renderer.h` |
+| Save/load | `io.cpp`, `io.h` |
+| Difficulty | `difficulty.cpp`, `difficulty.h` |
+| Shared types | `common.cpp`, `common.h` |
+| Keyboard | `input.cpp`, `input.h` |
