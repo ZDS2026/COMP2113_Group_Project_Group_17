@@ -1,5 +1,7 @@
 #include "renderer.h"
 
+#include "common.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <iomanip>
@@ -11,8 +13,28 @@
 
 namespace {
 const char* CLR_BLUE = "\033[34m";
-const char* CLR_RED = "\033[31m";
 const char* CLR_RESET = "\033[0m";
+
+// 256-color foreground (distinct per type; works on Windows Terminal / VS Code).
+const char* monster_type_fg(MonsterType t) {
+    switch (t) {
+        case MON_SLIME: return "\033[38;5;82m";
+        case MON_SKELETON: return "\033[38;5;145m";
+        case MON_ORC: return "\033[38;5;64m";
+        case MON_WARLOCK: return "\033[38;5;129m";
+        case MON_BOSS: return "\033[38;5;196m";
+        default: return "\033[38;5;250m";
+    }
+}
+
+const char* item_type_fg(ItemType t) {
+    switch (t) {
+        case ITEM_POTION: return "\033[38;5;51m";
+        case ITEM_SWORD: return "\033[38;5;220m";
+        case ITEM_SHIELD: return "\033[38;5;39m";
+        default: return "\033[38;5;250m";
+    }
+}
 
 // 256-color background (avoid SGR 100: on Windows / VS Code it often becomes bright white).
 constexpr int kBgFrame = 237; // outer frame / border bar
@@ -60,6 +82,76 @@ std::string pad_right(const std::string& s, int width) {
 
 // Terminal cells are taller than wide: use 3 columns per logical cell for a squarer look.
 constexpr int kCellCols = 3;
+// Visible width between "| ... |" borders on the HUD panel.
+constexpr int kPanelContentWidth = 39;
+
+std::string center_colored_char_in_cell(char ch, int width, const char* fg) {
+    if (width <= 0) return "";
+    const std::string core = std::string(fg) + ch + CLR_RESET;
+    if (width <= 1) return core;
+    const int left = (width - 1) / 2;
+    const int right = width - 1 - left;
+    return std::string(left, ' ') + core + std::string(right, ' ');
+}
+
+std::string monster_plain_metrics(MonsterType t, int hp, int eff, int num) {
+    std::ostringstream ss;
+    ss << monster_symbol(t) << ' ' << pad_right(monster_name(t), 8)
+       << " HP:" << std::setw(3) << (hp >= 0 ? std::to_string(hp) : std::string("-"))
+       << " ATK:" << std::setw(3) << (eff >= 0 ? std::to_string(eff) : std::string("-"))
+       << "  NUM:" << num;
+    return ss.str();
+}
+
+std::string side_monster_row(MonsterType t, int hp, int eff, int num) {
+    const char* fg = monster_type_fg(t);
+    const std::string plain = monster_plain_metrics(t, hp, eff, num);
+    std::ostringstream o;
+    o << "| " << fg << static_cast<char>(monster_symbol(t)) << CLR_RESET << ' '
+      << fg << pad_right(monster_name(t), 8) << CLR_RESET
+      << " HP:" << std::setw(3) << (hp >= 0 ? std::to_string(hp) : std::string("-"))
+      << " ATK:" << std::setw(3) << (eff >= 0 ? std::to_string(eff) : std::string("-"))
+      << "  NUM:" << num;
+    o << std::string(std::max(0, kPanelContentWidth - static_cast<int>(plain.size())), ' ');
+    o << " |";
+    return o.str();
+}
+
+std::string side_item_legend_row(ItemType it, char letter, const std::string& name_part, const std::string& tail) {
+    const char* fg = item_type_fg(it);
+    const std::string plain = std::string(1, letter) + ' ' + name_part + tail;
+    std::ostringstream o;
+    o << "| " << fg << letter << CLR_RESET << ' ' << fg << name_part << CLR_RESET << tail;
+    o << std::string(std::max(0, kPanelContentWidth - static_cast<int>(plain.size())), ' ');
+    o << " |";
+    return o.str();
+}
+
+std::string side_items_count_row(int active_potion, int active_sword, int active_shield) {
+    const char* fH = item_type_fg(ITEM_POTION);
+    const char* fS = item_type_fg(ITEM_SWORD);
+    const char* fD = item_type_fg(ITEM_SHIELD);
+    std::ostringstream plain_ss;
+    plain_ss << "Items H:" << active_potion << " S:" << active_sword << " D:" << active_shield;
+    const std::string plain = plain_ss.str();
+    std::ostringstream o;
+    o << "| Items " << fH << 'H' << CLR_RESET << ':' << active_potion << ' '
+      << fS << 'S' << CLR_RESET << ':' << active_sword << ' '
+      << fD << 'D' << CLR_RESET << ':' << active_shield;
+    o << std::string(std::max(0, kPanelContentWidth - static_cast<int>(plain.size())), ' ');
+    o << " |";
+    return o.str();
+}
+
+std::string side_boss_name_line(bool alive) {
+    const char* fg = alive ? monster_type_fg(MON_BOSS) : "\033[38;5;240m";
+    const std::string plain = std::string("Name: Ancient Boss");
+    std::ostringstream o;
+    o << "| Name: " << fg << "Ancient Boss" << CLR_RESET;
+    o << std::string(std::max(0, kPanelContentWidth - static_cast<int>(plain.size())), ' ');
+    o << " |";
+    return o.str();
+}
 
 // After moving cursor home and overwriting, shorter new lines leave old text on the
 // same row; EL clears from cursor to end of line (fixes "glued" log fragments).
@@ -161,58 +253,28 @@ void draw_frame(
     }
     side_lines.push_back("| " + pad_right(std::string(panel_inner_width - 2, '-'), panel_inner_width - 2) + " |");
     side_lines.push_back("| " + pad_right("Monsters (abbr / name / HP / ATK)", panel_inner_width - 2) + " |");
-    {
-        std::stringstream ss;
-        ss << "s Slime    HP:" << std::setw(3) << (slime_hp >= 0 ? std::to_string(slime_hp) : "-")
-           << " ATK:" << std::setw(3) << (slime_eff >= 0 ? std::to_string(slime_eff) : "-")
-           << "  NUM:" << alive_slime;
-        side_lines.push_back("| " + pad_right(ss.str(), panel_inner_width - 2) + " |");
-    }
-    {
-        std::stringstream ss;
-        ss << "k Skeleton HP:" << std::setw(3) << (skeleton_hp >= 0 ? std::to_string(skeleton_hp) : "-")
-           << " ATK:" << std::setw(3) << (skeleton_eff >= 0 ? std::to_string(skeleton_eff) : "-")
-           << "  NUM:" << alive_skeleton;
-        side_lines.push_back("| " + pad_right(ss.str(), panel_inner_width - 2) + " |");
-    }
-    {
-        std::stringstream ss;
-        ss << "o Orc      HP:" << std::setw(3) << (orc_hp >= 0 ? std::to_string(orc_hp) : "-")
-           << " ATK:" << std::setw(3) << (orc_eff >= 0 ? std::to_string(orc_eff) : "-")
-           << "  NUM:" << alive_orc;
-        side_lines.push_back("| " + pad_right(ss.str(), panel_inner_width - 2) + " |");
-    }
-    {
-        std::stringstream ss;
-        ss << "w Warlock  HP:" << std::setw(3) << (warlock_hp >= 0 ? std::to_string(warlock_hp) : "-")
-           << " ATK:" << std::setw(3) << (warlock_eff >= 0 ? std::to_string(warlock_eff) : "-")
-           << "  NUM:" << alive_warlock;
-        side_lines.push_back("| " + pad_right(ss.str(), panel_inner_width - 2) + " |");
-    }
+    side_lines.push_back(side_monster_row(MON_SLIME, slime_hp, slime_eff, alive_slime));
+    side_lines.push_back(side_monster_row(MON_SKELETON, skeleton_hp, skeleton_eff, alive_skeleton));
+    side_lines.push_back(side_monster_row(MON_ORC, orc_hp, orc_eff, alive_orc));
+    side_lines.push_back(side_monster_row(MON_WARLOCK, warlock_hp, warlock_eff, alive_warlock));
     side_lines.push_back("| " + pad_right(std::string(panel_inner_width - 2, '-'), panel_inner_width - 2) + " |");
     side_lines.push_back("| " + pad_right("Boss Panel", panel_inner_width - 2) + " |");
     if (boss_ptr) {
-        side_lines.push_back("| " + pad_right("Name: Ancient Boss", panel_inner_width - 2) + " |");
+        side_lines.push_back(side_boss_name_line(true));
         side_lines.push_back("| " + pad_right("HP:   " + std::to_string(boss_ptr->hp), panel_inner_width - 2) + " |");
         side_lines.push_back("| " + pad_right("ATK:  " + std::to_string(boss_ptr->atk), panel_inner_width - 2) + " |");
         side_lines.push_back("| " + pad_right("DEF:  " + std::to_string(boss_ptr->def), panel_inner_width - 2) + " |");
     } else {
-        side_lines.push_back("| " + pad_right("Name: Ancient Boss", panel_inner_width - 2) + " |");
+        side_lines.push_back(side_boss_name_line(false));
         side_lines.push_back("| " + pad_right("HP:   0", panel_inner_width - 2) + " |");
         side_lines.push_back("| " + pad_right("ATK:  -", panel_inner_width - 2) + " |");
         side_lines.push_back("| " + pad_right("DEF:  -", panel_inner_width - 2) + " |");
     }
     side_lines.push_back("| " + pad_right(std::string(panel_inner_width - 2, '-'), panel_inner_width - 2) + " |");
-    {
-        std::stringstream ss;
-        ss << "Items H:" << active_potion
-           << " S:" << active_sword
-           << " D:" << active_shield;
-        side_lines.push_back("| " + pad_right(ss.str(), panel_inner_width - 2) + " |");
-    }
-    side_lines.push_back("| " + pad_right("H Potion: +35 HP (up to max HP)", panel_inner_width - 2) + " |");
-    side_lines.push_back("| " + pad_right("S Sword : +6 ATK", panel_inner_width - 2) + " |");
-    side_lines.push_back("| " + pad_right("D Shield: +4 DEF", panel_inner_width - 2) + " |");
+    side_lines.push_back(side_items_count_row(active_potion, active_sword, active_shield));
+    side_lines.push_back(side_item_legend_row(ITEM_POTION, 'H', "Potion", ": +35 HP (up to max HP)"));
+    side_lines.push_back(side_item_legend_row(ITEM_SWORD, 'S', "Sword", " : +6 ATK"));
+    side_lines.push_back(side_item_legend_row(ITEM_SHIELD, 'D', "Shield", ": +4 DEF"));
     side_lines.push_back("+-----------------------------------------+");
 
     // Map: kCellCols terminal columns per grid cell; grey frame (2 cols each side).
@@ -235,16 +297,18 @@ void draw_frame(
                 }
                 int m_idx = find_alive_monster_at(monsters, monster_count, map_r, c);
                 if (m_idx >= 0) {
-                    if (monsters[m_idx].type == MON_BOSS) {
-                        line << " " << CLR_RED << monster_symbol(monsters[m_idx].type) << CLR_RESET << " ";
-                    } else {
-                        line << center_char_in_cell(monster_symbol(monsters[m_idx].type), kCellCols);
-                    }
+                    line << center_colored_char_in_cell(
+                        monster_symbol(monsters[m_idx].type),
+                        kCellCols,
+                        monster_type_fg(monsters[m_idx].type));
                     continue;
                 }
                 int i_idx = find_active_item_at(items, item_count, map_r, c);
                 if (i_idx >= 0) {
-                    line << center_char_in_cell(item_symbol(items[i_idx].type), kCellCols);
+                    line << center_colored_char_in_cell(
+                        item_symbol(items[i_idx].type),
+                        kCellCols,
+                        item_type_fg(items[i_idx].type));
                     continue;
                 }
                 line << wall_glyph(map, width, height, map_r, c);
