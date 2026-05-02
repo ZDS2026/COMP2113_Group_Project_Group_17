@@ -28,7 +28,9 @@ void draw_frame(
     const Item* items,
     int item_count,
     const RenderTargetInfo& target_info,
-    const std::deque<std::string>& logs
+    const std::deque<std::string>& logs,
+    int floor_index,
+    int floor_total
 );
 
 #endif

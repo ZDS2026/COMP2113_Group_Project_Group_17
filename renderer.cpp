@@ -194,7 +194,9 @@ void draw_frame(
     const Item* items,
     int item_count,
     const RenderTargetInfo& target_info,
-    const std::deque<std::string>& logs
+    const std::deque<std::string>& logs,
+    int floor_index,
+    int floor_total
 ) {
     (void)target_info;
     ensure_alternate_screen();
@@ -209,7 +211,7 @@ void draw_frame(
         out << "\033[H";
     }
 
-    int alive_slime = 0, alive_skeleton = 0, alive_orc = 0, alive_warlock = 0, alive_boss = 0;
+    int alive_slime = 0, alive_skeleton = 0, alive_orc = 0, alive_warlock = 0;
     const Monster* boss_ptr = nullptr;
     int slime_hp = -1, slime_eff = -1;
     int skeleton_hp = -1, skeleton_eff = -1;
@@ -222,7 +224,7 @@ void draw_frame(
             case MON_SKELETON: ++alive_skeleton; break;
             case MON_ORC: ++alive_orc; break;
             case MON_WARLOCK: ++alive_warlock; break;
-            case MON_BOSS: ++alive_boss; boss_ptr = &monsters[i]; break;
+            case MON_BOSS: boss_ptr = &monsters[i]; break;
             default: break;
         }
         int eff = std::max(0, monsters[i].atk - player.def);
@@ -243,6 +245,11 @@ void draw_frame(
     constexpr int panel_inner_width = 41;
     std::vector<std::string> side_lines;
     side_lines.push_back("+-----------------------------------------+");
+    if (floor_total > 1) {
+        std::ostringstream fss;
+        fss << "Floor " << floor_index << "/" << floor_total;
+        side_lines.push_back("| " + pad_right(fss.str(), panel_inner_width - 2) + " |");
+    }
     side_lines.push_back("| " + pad_right("HUD", panel_inner_width - 2) + " |");
     {
         std::stringstream ss;
