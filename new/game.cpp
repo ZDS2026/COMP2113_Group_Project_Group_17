@@ -704,7 +704,8 @@ void Game::show_help_screen() const {
     std::cout << "  Slime    : random wander\n";
     std::cout << "  Skeleton : patrol in a line, turns when blocked\n";
     std::cout << "  Orc      : closes in within Manhattan 4, else wanders\n";
-    std::cout << "  Warlock  : backs off if too close; keeps distance mid-range\n\n";
+    std::cout << "  Warlock  : backs off if too close; keeps distance mid-range\n";
+    std::cout << "  Monsters cannot enter a tile that still has an item on it.\n\n";
     std::cout << "Press any key to return...\n" << std::flush;
     for (;;) {
         int k = read_key_immediate();
@@ -746,6 +747,7 @@ bool Game::cell_blocked_for_monster(int r, int c, int self_idx) const {
     if (!is_walkable(map, width, height, r, c)) return true;
     const int j = find_monster_at(r, c);
     if (j >= 0 && j != self_idx) return true;
+    if (find_item_at(r, c) >= 0) return true;
     return false;
 }
 
