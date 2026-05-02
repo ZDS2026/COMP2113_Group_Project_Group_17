@@ -1,9 +1,7 @@
-CXX      = g++
+CXX = g++
 CXXFLAGS = -std=c++11 -Wall -Wextra -g
-SRCDIR   = src
-TARGET   = magictower
-
-SRCS = $(wildcard $(SRCDIR)/*.cpp)
+TARGET = mini_magic_tower
+SRCS = main.cpp game.cpp common.cpp difficulty.cpp map.cpp renderer.cpp io.cpp input.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 all: $(TARGET)
@@ -11,10 +9,10 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-$(SRCDIR)/%.o: $(SRCDIR)/%.cpp
+%.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET) *.save
+	rm -f $(OBJS) $(TARGET) *.exe save*.dat
 
 .PHONY: all clean
