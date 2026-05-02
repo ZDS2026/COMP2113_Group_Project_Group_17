@@ -61,6 +61,10 @@ std::string pad_right(const std::string& s, int width) {
 // Terminal cells are taller than wide: use 3 columns per logical cell for a squarer look.
 constexpr int kCellCols = 3;
 
+// After moving cursor home and overwriting, shorter new lines leave old text on the
+// same row; EL clears from cursor to end of line (fixes "glued" log fragments).
+constexpr const char* kClrEol = "\033[0m\033[K";
+
 std::string center_char_in_cell(char ch, int width) {
     if (width <= 0) return "";
     if (width == 1) return std::string(1, ch);
@@ -255,14 +259,17 @@ void draw_frame(
         if (r < static_cast<int>(side_lines.size())) {
             line << side_lines[r];
         }
-        out << line.str() << "\n";
+        out << line.str() << kClrEol << "\n";
     }
 
-    out << "\n\nControls: WASD (instant) | P then 1-5 save | L then 1-5 load | H help | Q quit\n";
-    out << "Goal: Defeat boss (B) at bottom-right.\n";
-    out << "Log:\n";
+    out << kClrEol << "\n";
+    out << kClrEol << "\n";
+    out << "Controls: WASD move | H help | Q quit" << kClrEol << "\n";
+    out << "Save: P then slot 1-5 | Load: L then slot 1-5" << kClrEol << "\n";
+    out << "Goal: Defeat boss (B) at bottom-right." << kClrEol << "\n";
+    out << "Log:" << kClrEol << "\n";
     for (const std::string& msg : logs) {
-        out << " - " << msg << "\n";
+        out << " - " << msg << kClrEol << "\n";
     }
     // Drop any lines left from a shorter previous frame (e.g. fewer log lines).
     out << "\033[J";
