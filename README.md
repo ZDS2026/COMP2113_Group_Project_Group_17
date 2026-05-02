@@ -9,7 +9,7 @@ Replace placeholders before you submit.
 | | Name | UID |
 |--|------|-----|
 | A (Leader) | `<Name>` | `<UID>` |
-| B | `<Name>` | `<UID>` |
+| B | `Zhang Shui` | `3036588735` |
 | C | `<Name>` | `<UID>` |
 | D | `<Name>` | `<UID>` |
 | E | `<Name>` | `<UID>` |
