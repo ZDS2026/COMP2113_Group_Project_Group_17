@@ -49,16 +49,36 @@ Replace placeholders before you submit.
 - Auto-combat, items, HUD + boss panel  
 - Five save slots, single-key input, in-game help  
 
+## Features and course coding requirements (1–5)
+
+The project spec asks how **coding elements 1–5** support the features above. This is how they map in our implementation:
+
+| # | Requirement | How it appears in the game | Supporting files / idea |
+|---|----------------|---------------------------|-------------------------|
+| **1** | **Randomness** (e.g. random events / procedural variation) | Each new run uses a **random seed** (`std::srand` / `std::rand`). The **maze** is carved with random choices; **monsters** and **items** are placed on random floor tiles; monster **types** are rolled by probability; optional **balance jitter** perturbs stats so runs differ. | `map.cpp` (`generate_map_with_path`), `game.cpp` (placement, `random_monster_type`, simulation) |
+| **2** | **Data structures** | **Structs** (`Player`, `Monster`, `Item`, `DifficultyConfig`), **enums** (`MonsterType`, `ItemType`, `DifficultyLevel`), and a **2D grid** (`char**`) represent game state, entities, and the map for logic and rendering. | `common.h`, `game.cpp`, `map.cpp` |
+| **3** | **Dynamic memory management** | The map is a **heap-allocated 2D array** (`new`/`delete` per row). **Monster** and **item** arrays are sized from difficulty (`new`/`delete` in setup and load). Memory is released when a run ends or the map is rebuilt. | `map.cpp` (`create_map`, `destroy_map`), `game.cpp`, `io.cpp` (load path) |
+| **4** | **File input/output** | **Five save slots** (`save1.dat` … `save5.dat`). Save writes player, map, monsters, items, and metadata; load restores a session so the teaching team can use **Continue** after exit. | `io.cpp`, `io.h` (`<fstream>`) |
+| **5** | **Multi-file program organization** | Logic is split into **translation units** (menu, game loop, map gen, render, persistence, difficulty, shared types, input) with headers for interfaces—easier to build, test, and assign work across the team. | See **Project layout** below |
+
+Together, (1) gives varied dungeons each play; (2)–(3) hold that state safely at runtime; (4) persists it; (5) keeps the codebase maintainable.
+
+## Non-standard C/C++ libraries
+
+**None.** The game is built with **ISO C++17** and the **C++ standard library only** (for example `<iostream>`, `<fstream>`, `<string>`, `<vector>`, `<cstdlib>` for `rand`/`srand`, etc.). No third-party or course-“non-standard” libraries are linked or vendored in this repo, so **every listed feature** runs on that baseline.
+
 ## Requirements
 
 - C++17 compiler (`g++` recommended)  
-- Standard library only  
 
-## Build
+## Build (quick start)
+
+From a clone of the repository, the sources live under `new/`. The teaching team should:
 
 **Linux / macOS**
 
 ```bash
+cd new
 make
 ./mini_magic_tower
 ```
@@ -66,6 +86,7 @@ make
 **Windows (PowerShell)**
 
 ```powershell
+cd new
 $src = (Get-ChildItem -Filter "*.cpp" | ForEach-Object { $_.FullName })
 g++ -std=c++17 -Wall -Wextra -g $src -o mini_magic_tower.exe
 .\mini_magic_tower.exe
