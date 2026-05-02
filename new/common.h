@@ -44,6 +44,9 @@ struct Monster {
     int atk;
     int def;
     bool alive;
+    /** Skeleton patrol step; other types may leave (0,0). */
+    int patrol_dr;
+    int patrol_dc;
 };
 
 struct Item {

@@ -101,6 +101,7 @@ bool Game::load_saved(int slot) {
         cleanup_dynamic_memory();
         return false;
     }
+    ensure_skeleton_patrols();
     level = loaded_level;
     cfg = get_difficulty_config(level);
     if (!rebuild_guaranteed_path()) {
@@ -280,6 +281,8 @@ void Game::place_entities() {
         monsters[i].def = 0;
         monsters[i].pos = {0, 0};
         monsters[i].type = MON_SLIME;
+        monsters[i].patrol_dr = 0;
+        monsters[i].patrol_dc = 0;
     }
 
     auto is_on_path = [&](int r, int c) {
@@ -333,6 +336,7 @@ void Game::place_entities() {
         monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale);
         monsters[idx].def = 0;
         monsters[idx].alive = true;
+        if (monsters[idx].type == MON_SKELETON) roll_skeleton_patrol(idx);
         ++idx;
     }
 
@@ -354,6 +358,7 @@ void Game::place_entities() {
             monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale);
             monsters[idx].def = 0;
             monsters[idx].alive = true;
+            if (monsters[idx].type == MON_SKELETON) roll_skeleton_patrol(idx);
             ++idx;
             done = true;
             break;
@@ -376,6 +381,7 @@ void Game::place_entities() {
         monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale);
         monsters[idx].def = 0;
         monsters[idx].alive = true;
+        if (monsters[idx].type == MON_SKELETON) roll_skeleton_patrol(idx);
         ++idx;
     }
 
@@ -385,6 +391,8 @@ void Game::place_entities() {
     monsters[monster_count - 1].atk = static_cast<int>(base_monster_atk(MON_BOSS) * cfg.monster_atk_scale);
     monsters[monster_count - 1].def = (level == DIFF_HARD) ? 12 : (level == DIFF_MEDIUM ? 8 : 6);
     monsters[monster_count - 1].alive = true;
+    monsters[monster_count - 1].patrol_dr = 0;
+    monsters[monster_count - 1].patrol_dc = 0;
 
     item_count = cfg.potion_count + cfg.sword_count + cfg.shield_count;
     items = new Item[item_count];
@@ -692,6 +700,11 @@ void Game::show_help_screen() const {
     std::cout << "  H Potion: +35 HP (up to max HP)\n";
     std::cout << "  S Sword : +6 ATK\n";
     std::cout << "  D Shield: +4 DEF\n\n";
+    std::cout << "Monsters (after each WASD step; Boss never moves):\n";
+    std::cout << "  Slime    : random wander\n";
+    std::cout << "  Skeleton : patrol in a line, turns when blocked\n";
+    std::cout << "  Orc      : closes in within Manhattan 4, else wanders\n";
+    std::cout << "  Warlock  : backs off if too close; keeps distance mid-range\n\n";
     std::cout << "Press any key to return...\n" << std::flush;
     for (;;) {
         int k = read_key_immediate();
@@ -727,6 +740,215 @@ int Game::find_item_at(int r, int c) const {
         if (items[i].active && items[i].pos.r == r && items[i].pos.c == c) return i;
     }
     return -1;
+}
+
+bool Game::cell_blocked_for_monster(int r, int c, int self_idx) const {
+    if (!is_walkable(map, width, height, r, c)) return true;
+    const int j = find_monster_at(r, c);
+    if (j >= 0 && j != self_idx) return true;
+    return false;
+}
+
+void Game::roll_skeleton_patrol(int idx) {
+    if (idx < 0 || idx >= monster_count) return;
+    Monster& m = monsters[idx];
+    const int dr4[4] = {-1, 1, 0, 0};
+    const int dc4[4] = {0, 0, -1, 1};
+    int cand[4][2];
+    int n = 0;
+    for (int k = 0; k < 4; ++k) {
+        const int tr = m.pos.r + dr4[k];
+        const int tc = m.pos.c + dc4[k];
+        if (!cell_blocked_for_monster(tr, tc, idx)) {
+            cand[n][0] = dr4[k];
+            cand[n][1] = dc4[k];
+            ++n;
+        }
+    }
+    if (n == 0) {
+        m.patrol_dr = 0;
+        m.patrol_dc = 0;
+        return;
+    }
+    const int pick = std::rand() % n;
+    m.patrol_dr = cand[pick][0];
+    m.patrol_dc = cand[pick][1];
+}
+
+void Game::ensure_skeleton_patrols() {
+    for (int i = 0; i < monster_count; ++i) {
+        if (!monsters[i].alive || monsters[i].type != MON_SKELETON) continue;
+        if (monsters[i].patrol_dr == 0 && monsters[i].patrol_dc == 0) roll_skeleton_patrol(i);
+    }
+}
+
+void Game::tick_monsters() {
+    if (!running) return;
+    const int dr4[4] = {-1, 1, 0, 0};
+    const int dc4[4] = {0, 0, -1, 1};
+    auto manhattan = [&](int r, int c) {
+        return std::abs(r - player.pos.r) + std::abs(c - player.pos.c);
+    };
+
+    for (int i = 0; i < monster_count && running; ++i) {
+        Monster& m = monsters[i];
+        if (!m.alive || m.type == MON_BOSS) continue;
+
+        const int r = m.pos.r;
+        const int c = m.pos.c;
+        int nr = r;
+        int nc = c;
+
+        if (m.type == MON_SLIME) {
+            int moves[5][2];
+            int nm = 0;
+            moves[nm][0] = 0;
+            moves[nm][1] = 0;
+            ++nm;
+            for (int k = 0; k < 4; ++k) {
+                const int tr = r + dr4[k];
+                const int tc = c + dc4[k];
+                if (!cell_blocked_for_monster(tr, tc, i)) {
+                    moves[nm][0] = dr4[k];
+                    moves[nm][1] = dc4[k];
+                    ++nm;
+                }
+            }
+            const int pick = std::rand() % nm;
+            nr = r + moves[pick][0];
+            nc = c + moves[pick][1];
+        } else if (m.type == MON_SKELETON) {
+            if (m.patrol_dr == 0 && m.patrol_dc == 0) roll_skeleton_patrol(i);
+            if (m.patrol_dr != 0 || m.patrol_dc != 0) {
+                const int tr = r + m.patrol_dr;
+                const int tc = c + m.patrol_dc;
+                if (!cell_blocked_for_monster(tr, tc, i)) {
+                    nr = tr;
+                    nc = tc;
+                } else {
+                    roll_skeleton_patrol(i);
+                }
+            }
+        } else if (m.type == MON_ORC) {
+            const int d0 = manhattan(r, c);
+            if (d0 > 0 && d0 <= 4) {
+                int best = d0;
+                int cand[4][2];
+                int ncand = 0;
+                for (int k = 0; k < 4; ++k) {
+                    const int tr = r + dr4[k];
+                    const int tc = c + dc4[k];
+                    if (cell_blocked_for_monster(tr, tc, i)) continue;
+                    const int d1 = manhattan(tr, tc);
+                    if (d1 < best) {
+                        best = d1;
+                        ncand = 0;
+                        cand[ncand][0] = dr4[k];
+                        cand[ncand][1] = dc4[k];
+                        ++ncand;
+                    } else if (d1 == best) {
+                        cand[ncand][0] = dr4[k];
+                        cand[ncand][1] = dc4[k];
+                        ++ncand;
+                    }
+                }
+                if (ncand > 0) {
+                    const int pick = std::rand() % ncand;
+                    nr = r + cand[pick][0];
+                    nc = c + cand[pick][1];
+                }
+            } else {
+                int moves[5][2];
+                int nm = 0;
+                moves[nm][0] = 0;
+                moves[nm][1] = 0;
+                ++nm;
+                for (int k = 0; k < 4; ++k) {
+                    const int tr = r + dr4[k];
+                    const int tc = c + dc4[k];
+                    if (!cell_blocked_for_monster(tr, tc, i)) {
+                        moves[nm][0] = dr4[k];
+                        moves[nm][1] = dc4[k];
+                        ++nm;
+                    }
+                }
+                const int pick = std::rand() % nm;
+                nr = r + moves[pick][0];
+                nc = c + moves[pick][1];
+            }
+        } else if (m.type == MON_WARLOCK) {
+            const int d0 = manhattan(r, c);
+            if (d0 <= 2 && d0 > 0) {
+                int cand[4][2];
+                int ncand = 0;
+                for (int k = 0; k < 4; ++k) {
+                    const int tr = r + dr4[k];
+                    const int tc = c + dc4[k];
+                    if (cell_blocked_for_monster(tr, tc, i)) continue;
+                    if (manhattan(tr, tc) > d0) {
+                        cand[ncand][0] = dr4[k];
+                        cand[ncand][1] = dc4[k];
+                        ++ncand;
+                    }
+                }
+                if (ncand > 0) {
+                    const int pick = std::rand() % ncand;
+                    nr = r + cand[pick][0];
+                    nc = c + cand[pick][1];
+                }
+            } else if (d0 >= 3 && d0 <= 5) {
+                int cand[4][2];
+                int ncand = 0;
+                for (int k = 0; k < 4; ++k) {
+                    const int tr = r + dr4[k];
+                    const int tc = c + dc4[k];
+                    if (cell_blocked_for_monster(tr, tc, i)) continue;
+                    if (manhattan(tr, tc) >= d0) {
+                        cand[ncand][0] = dr4[k];
+                        cand[ncand][1] = dc4[k];
+                        ++ncand;
+                    }
+                }
+                if (ncand > 0) {
+                    const int pick = std::rand() % ncand;
+                    nr = r + cand[pick][0];
+                    nc = c + cand[pick][1];
+                }
+            } else {
+                if ((std::rand() % 2) == 0) {
+                    nr = r;
+                    nc = c;
+                } else {
+                    int moves[4][2];
+                    int nm = 0;
+                    for (int k = 0; k < 4; ++k) {
+                        const int tr = r + dr4[k];
+                        const int tc = c + dc4[k];
+                        if (!cell_blocked_for_monster(tr, tc, i)) {
+                            moves[nm][0] = dr4[k];
+                            moves[nm][1] = dc4[k];
+                            ++nm;
+                        }
+                    }
+                    if (nm > 0) {
+                        const int pick = std::rand() % nm;
+                        nr = r + moves[pick][0];
+                        nc = c + moves[pick][1];
+                    }
+                }
+            }
+        }
+
+        if (nr == r && nc == c) continue;
+        if (nr == player.pos.r && nc == player.pos.c) {
+            m.pos.r = nr;
+            m.pos.c = nc;
+            resolve_combat(i);
+        } else {
+            m.pos.r = nr;
+            m.pos.c = nc;
+        }
+    }
 }
 
 void Game::apply_item_effect(int item_idx) {
@@ -802,19 +1024,27 @@ bool Game::try_move(int dr, int dc) {
 bool Game::handle_input(char cmd) {
     if (cmd == 'w' || cmd == 'W') {
         invalid_input_streak = 0;
-        return try_move(-1, 0);
+        const bool step = try_move(-1, 0);
+        if (running) tick_monsters();
+        return step;
     }
     if (cmd == 's' || cmd == 'S') {
         invalid_input_streak = 0;
-        return try_move(1, 0);
+        const bool step = try_move(1, 0);
+        if (running) tick_monsters();
+        return step;
     }
     if (cmd == 'a' || cmd == 'A') {
         invalid_input_streak = 0;
-        return try_move(0, -1);
+        const bool step = try_move(0, -1);
+        if (running) tick_monsters();
+        return step;
     }
     if (cmd == 'd' || cmd == 'D') {
         invalid_input_streak = 0;
-        return try_move(0, 1);
+        const bool step = try_move(0, 1);
+        if (running) tick_monsters();
+        return step;
     }
     if (cmd == 'q' || cmd == 'Q') {
         invalid_input_streak = 0;

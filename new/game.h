@@ -76,6 +76,11 @@ private:
     int find_monster_at(int r, int c) const;
     int find_item_at(int r, int c) const;
     bool is_goal_defeated() const;
+
+    bool cell_blocked_for_monster(int r, int c, int self_idx) const;
+    void roll_skeleton_patrol(int idx);
+    void ensure_skeleton_patrols();
+    void tick_monsters();
 };
 
 #endif
