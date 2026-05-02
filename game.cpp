@@ -30,7 +30,7 @@ int base_monster_hp(MonsterType t) {
         case MON_SKELETON: return 50;
         case MON_ORC: return 70;
         case MON_WARLOCK: return 45;
-        case MON_BOSS: return 180;
+        case MON_BOSS: return 200;
         default: return 40;
     }
 }
@@ -41,7 +41,7 @@ int base_monster_atk(MonsterType t) {
         case MON_SKELETON: return 16;
         case MON_ORC: return 20;
         case MON_WARLOCK: return 24;
-        case MON_BOSS: return 32;
+        case MON_BOSS: return 35;
         default: return 12;
     }
 }
@@ -52,7 +52,8 @@ Game::Game()
       monsters(nullptr), monster_count(0), items(nullptr), item_count(0),
       running(false), win(false), suppress_first_run_draw_(false),
       invalid_input_streak(0),
-      last_route_count(0), last_balance_winrate(0), logs(), target_info{} {
+      last_route_count(0), last_balance_winrate(0), logs(), target_info{},
+      current_floor_(1), total_floors_(1) {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 }
 
@@ -75,7 +76,19 @@ void Game::cleanup_dynamic_memory() {
 
 void Game::paint_full_frame() {
     refresh_target_panel();
-    draw_frame(map, width, height, player, monsters, monster_count, items, item_count, target_info, logs);
+    draw_frame(
+        map,
+        width,
+        height,
+        player,
+        monsters,
+        monster_count,
+        items,
+        item_count,
+        target_info,
+        logs,
+        current_floor_,
+        total_floors_);
 }
 
 void Game::add_log(const std::string& msg) {
@@ -97,7 +110,19 @@ bool Game::load_saved(int slot) {
 
     DifficultyLevel loaded_level = DIFF_EASY;
     std::string path = slot_path(slot);
-    if (!load_game(path, loaded_level, player, map, width, height, monsters, monster_count, items, item_count)) {
+    if (!load_game(
+            path,
+            loaded_level,
+            player,
+            map,
+            width,
+            height,
+            monsters,
+            monster_count,
+            items,
+            item_count,
+            current_floor_,
+            total_floors_)) {
         cleanup_dynamic_memory();
         return false;
     }
@@ -126,6 +151,9 @@ bool Game::start_new(DifficultyLevel lv) {
 
     level = lv;
     cfg = get_difficulty_config(level);
+    total_floors_ = cfg.floor_count;
+    if (total_floors_ < 1) total_floors_ = 1;
+    current_floor_ = 1;
     width = cfg.width;
     height = cfg.height;
 
@@ -176,10 +204,82 @@ bool Game::start_new(DifficultyLevel lv) {
         ss << "Balance sim (40 runs): winrate " << last_balance_winrate << "%";
         add_log(ss.str());
     }
-    add_log("Defeat the boss at bottom-right!");
+    add_log("Clear each floor by defeating the boss; final floor wins the run.");
     paint_full_frame();
     suppress_first_run_draw_ = true;
     return true;
+}
+
+float Game::floor_mob_stat_mul() const {
+    if (current_floor_ <= 1) return 1.0f;
+    // Minions scale up aggressively on deep floors (pressure between bosses).
+    const float d = static_cast<float>(current_floor_ - 1);
+    return 1.0f + 0.25f * d + 0.062f * d * d + 0.009f * d * d * d;
+}
+
+float Game::floor_boss_hp_atk_mul() const {
+    if (current_floor_ <= 1) return 1.0f;
+    // Boss HP/ATK rise gently; floor 4–5 extra trim so boss feels weaker than the mob pack.
+    const float d = static_cast<float>(current_floor_ - 1);
+    float v = 1.0f + 0.09f * d + 0.020f * d * d;
+    if (current_floor_ >= 4) v *= 0.93f;
+    if (current_floor_ >= 5) v *= 0.87f;
+    return v;
+}
+
+bool Game::regenerate_fresh_floor_map() {
+    target_info = {};
+    guaranteed_path.clear();
+    if (map && height > 0) destroy_map(map, height);
+    map = nullptr;
+    if (monsters) {
+        delete[] monsters;
+        monsters = nullptr;
+    }
+    if (items) {
+        delete[] items;
+        items = nullptr;
+    }
+    monster_count = 0;
+    item_count = 0;
+
+    player.pos = {0, 0};
+    width = cfg.width;
+    height = cfg.height;
+
+    bool ok = false;
+    for (int attempt = 0; attempt < 160; ++attempt) {
+        if (map && height > 0) destroy_map(map, height);
+        map = create_map(width, height);
+        if (!map) return false;
+        generate_map_with_path(map, width, height);
+        if (!rebuild_guaranteed_path()) continue;
+
+        if (monsters) {
+            delete[] monsters;
+            monsters = nullptr;
+        }
+        if (items) {
+            delete[] items;
+            items = nullptr;
+        }
+        monster_count = 0;
+        item_count = 0;
+        place_entities();
+
+        if (!simulate_guaranteed_path_clear()) continue;
+
+        int route_count = count_shortest_routes_cap(9);
+        int winrate = estimate_balance_winrate(40);
+
+        if (route_count < 2 && attempt < 120) continue;
+
+        ok = true;
+        last_route_count = route_count;
+        last_balance_winrate = winrate;
+        break;
+    }
+    return ok;
 }
 
 bool Game::rebuild_guaranteed_path() {
@@ -272,6 +372,8 @@ int Game::count_shortest_routes_cap(int cap) const {
 }
 
 void Game::place_entities() {
+    const float mob_mul = floor_mob_stat_mul();
+    const float boss_mul = floor_boss_hp_atk_mul();
     monster_count = cfg.monster_count + 1; // +1 boss
     monsters = new Monster[monster_count];
     for (int i = 0; i < monster_count; ++i) {
@@ -315,7 +417,8 @@ void Game::place_entities() {
         }
     }
 
-    int path_blockers_target = std::min(2, std::max(0, static_cast<int>(guaranteed_path.size() / 30)));
+    int path_blockers_target =
+        std::min(4, std::max(0, static_cast<int>(guaranteed_path.size() / 11)));
     int non_boss_total = cfg.monster_count;
     int off_path_target = std::max(0, non_boss_total - path_blockers_target);
 
@@ -332,8 +435,8 @@ void Game::place_entities() {
         MonsterType t = random_monster_type();
         monsters[idx].type = t;
         monsters[idx].pos = {r, c};
-        monsters[idx].hp = static_cast<int>(base_monster_hp(t) * cfg.monster_hp_scale);
-        monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale);
+        monsters[idx].hp = static_cast<int>(base_monster_hp(t) * cfg.monster_hp_scale * mob_mul);
+        monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale * mob_mul);
         monsters[idx].def = 0;
         monsters[idx].alive = true;
         if (monsters[idx].type == MON_SKELETON) roll_skeleton_patrol(idx);
@@ -354,8 +457,8 @@ void Game::place_entities() {
             MonsterType t = MON_SLIME;
             monsters[idx].type = t;
             monsters[idx].pos = p;
-            monsters[idx].hp = static_cast<int>(base_monster_hp(t) * cfg.monster_hp_scale);
-            monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale);
+            monsters[idx].hp = static_cast<int>(base_monster_hp(t) * cfg.monster_hp_scale * mob_mul);
+            monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale * mob_mul);
             monsters[idx].def = 0;
             monsters[idx].alive = true;
             if (monsters[idx].type == MON_SKELETON) roll_skeleton_patrol(idx);
@@ -377,8 +480,8 @@ void Game::place_entities() {
         MonsterType t = random_monster_type();
         monsters[idx].type = t;
         monsters[idx].pos = {r, c};
-        monsters[idx].hp = static_cast<int>(base_monster_hp(t) * cfg.monster_hp_scale);
-        monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale);
+        monsters[idx].hp = static_cast<int>(base_monster_hp(t) * cfg.monster_hp_scale * mob_mul);
+        monsters[idx].atk = static_cast<int>(base_monster_atk(t) * cfg.monster_atk_scale * mob_mul);
         monsters[idx].def = 0;
         monsters[idx].alive = true;
         if (monsters[idx].type == MON_SKELETON) roll_skeleton_patrol(idx);
@@ -387,9 +490,18 @@ void Game::place_entities() {
 
     monsters[monster_count - 1].type = MON_BOSS;
     monsters[monster_count - 1].pos = {height - 1, width - 1};
-    monsters[monster_count - 1].hp = static_cast<int>(base_monster_hp(MON_BOSS) * cfg.monster_hp_scale);
-    monsters[monster_count - 1].atk = static_cast<int>(base_monster_atk(MON_BOSS) * cfg.monster_atk_scale);
-    monsters[monster_count - 1].def = (level == DIFF_HARD) ? 12 : (level == DIFF_MEDIUM ? 8 : 6);
+    monsters[monster_count - 1].hp =
+        static_cast<int>(base_monster_hp(MON_BOSS) * cfg.monster_hp_scale * boss_mul);
+    monsters[monster_count - 1].atk =
+        static_cast<int>(base_monster_atk(MON_BOSS) * cfg.monster_atk_scale * boss_mul);
+    {
+        const int base_boss_def = (level == DIFF_HARD) ? 12 : (level == DIFF_MEDIUM ? 8 : 6);
+        const int f = current_floor_;
+        const int def_linear = 2 * (f - 1);
+        const int def_late = (f >= 4) ? 2 : 0;
+        const int def_late5 = (f >= 5) ? 2 : 0;
+        monsters[monster_count - 1].def = base_boss_def + def_linear + def_late + def_late5;
+    }
     monsters[monster_count - 1].alive = true;
     monsters[monster_count - 1].patrol_dr = 0;
     monsters[monster_count - 1].patrol_dc = 0;
@@ -535,8 +647,12 @@ void Game::ensure_boss_beatable() {
         ++sim_guard;
     }
 
-    // Monte-Carlo balancing: nudge boss if hard map still trends too punishing.
-    int target_winrate = (level == DIFF_EASY) ? 75 : ((level == DIFF_MEDIUM) ? 58 : 42);
+    // Monte-Carlo balancing: lower targets => less boss shaving. Extra penalty on floor 4+
+    // so late bosses keep more HP/ATK/DEF while still passing the strict path sim above.
+    int base_wr = (level == DIFF_EASY) ? 60 : ((level == DIFF_MEDIUM) ? 40 : 22);
+    const int f = current_floor_;
+    int target_winrate = base_wr - 6 * (f - 1) - 5 * std::max(0, f - 3);
+    target_winrate = std::max(10, target_winrate);
     int guard = 0;
     int wr = estimate_balance_winrate(30);
     while (wr < target_winrate && guard < 80) {
@@ -686,7 +802,9 @@ void Game::show_help_screen() const {
     std::cout << "\033[2J\033[H";
     std::cout << "==== Help / Rules ====\n\n";
     std::cout << "Goal:\n";
-    std::cout << "  Defeat boss B at bottom-right.\n\n";
+    std::cout << "  Multi-floor run: Easy 3 / Medium 4 / Hard 5 floors.\n";
+    std::cout << "  Defeat the boss on each floor to advance; last floor wins.\n";
+    std::cout << "  Deeper floors have tougher monsters.\n\n";
     std::cout << "Controls:\n";
     std::cout << "  W A S D : move\n";
     std::cout << "  P       : save game (then press 1-5 for slot, no Enter)\n";
@@ -1007,9 +1125,28 @@ void Game::resolve_combat(int monster_idx) {
         win = false;
         add_log("You are defeated.");
     } else if (m.type == MON_BOSS && !m.alive) {
-        running = false;
-        win = true;
-        add_log("Boss defeated. You win!");
+        if (current_floor_ < total_floors_) {
+            const int cleared = current_floor_;
+            int heal = std::max(8, player.max_hp / 10) - 4 * (cleared - 1);
+            if (cleared >= 3) heal -= 3 * (cleared - 2);
+            heal = std::max(0, heal);
+            player.hp = std::min(player.max_hp, player.hp + heal);
+            ++current_floor_;
+            if (!regenerate_fresh_floor_map()) {
+                running = false;
+                win = false;
+                add_log("Floor generation failed.");
+            } else {
+                std::stringstream ss;
+                ss << "Floor " << cleared << " cleared! Enter floor " << current_floor_
+                   << " (monsters grow stronger).";
+                add_log(ss.str());
+            }
+        } else {
+            running = false;
+            win = true;
+            add_log("Boss defeated. You win!");
+        }
     }
 }
 
@@ -1068,7 +1205,19 @@ bool Game::handle_input(char cmd) {
             return true;
         }
         std::string path = slot_path(slot);
-        if (save_game(path, level, player, map, width, height, monsters, monster_count, items, item_count)) {
+        if (save_game(
+                path,
+                level,
+                player,
+                map,
+                width,
+                height,
+                monsters,
+                monster_count,
+                items,
+                item_count,
+                current_floor_,
+                total_floors_)) {
             add_log("Game saved to " + path);
         } else {
             add_log("Save failed.");
@@ -1084,10 +1233,30 @@ bool Game::handle_input(char cmd) {
         }
         std::string path = slot_path(slot);
         DifficultyLevel loaded_level = level;
-        if (load_game(path, loaded_level, player, map, width, height, monsters, monster_count, items, item_count)) {
+        if (load_game(
+                path,
+                loaded_level,
+                player,
+                map,
+                width,
+                height,
+                monsters,
+                monster_count,
+                items,
+                item_count,
+                current_floor_,
+                total_floors_)) {
             level = loaded_level;
             cfg = get_difficulty_config(level);
-            add_log("Game loaded from " + path);
+            if (!rebuild_guaranteed_path()) {
+                add_log("Load failed: map routing invalid.");
+                cleanup_dynamic_memory();
+                running = false;
+                win = false;
+            } else {
+                ensure_skeleton_patrols();
+                add_log("Game loaded from " + path);
+            }
         } else {
             add_log("Load failed.");
         }

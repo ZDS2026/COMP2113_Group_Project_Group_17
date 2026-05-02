@@ -56,6 +56,9 @@ private:
     RenderTargetInfo target_info;
     std::vector<Position> guaranteed_path;
 
+    int current_floor_;
+    int total_floors_;
+
     void cleanup_dynamic_memory();
     void paint_full_frame();
     void add_log(const std::string& msg);
@@ -81,6 +84,10 @@ private:
     void roll_skeleton_patrol(int idx);
     void ensure_skeleton_patrols();
     void tick_monsters();
+
+    float floor_mob_stat_mul() const;
+    float floor_boss_hp_atk_mul() const;
+    bool regenerate_fresh_floor_map();
 };
 
 #endif
