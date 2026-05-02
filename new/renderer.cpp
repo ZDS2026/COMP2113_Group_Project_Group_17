@@ -102,8 +102,16 @@ void draw_frame(
 ) {
     (void)target_info;
     ensure_alternate_screen();
-    // Clear scrollback + home (helps terminals that ignore alt-screen scroll).
-    std::cout << "\033[2J\033[3J\033[H" << std::flush;
+    // Full erase every frame causes visible flicker (blank flash). After the alternate
+    // buffer exists, repaint from home only and erase tail once; one initial full clear.
+    static bool s_did_initial_alt_clear = false;
+    std::ostringstream out;
+    if (!s_did_initial_alt_clear) {
+        out << "\033[2J\033[3J\033[H";
+        s_did_initial_alt_clear = true;
+    } else {
+        out << "\033[H";
+    }
 
     int alive_slime = 0, alive_skeleton = 0, alive_orc = 0, alive_warlock = 0, alive_boss = 0;
     const Monster* boss_ptr = nullptr;
@@ -247,13 +255,16 @@ void draw_frame(
         if (r < static_cast<int>(side_lines.size())) {
             line << side_lines[r];
         }
-        std::cout << line.str() << "\n";
+        out << line.str() << "\n";
     }
 
-    std::cout << "\n\nControls: WASD (instant) | P then 1-5 save | L then 1-5 load | H help | Q quit\n";
-    std::cout << "Goal: Defeat boss (B) at bottom-right.\n";
-    std::cout << "Log:\n";
+    out << "\n\nControls: WASD (instant) | P then 1-5 save | L then 1-5 load | H help | Q quit\n";
+    out << "Goal: Defeat boss (B) at bottom-right.\n";
+    out << "Log:\n";
     for (const std::string& msg : logs) {
-        std::cout << " - " << msg << "\n";
+        out << " - " << msg << "\n";
     }
+    // Drop any lines left from a shorter previous frame (e.g. fewer log lines).
+    out << "\033[J";
+    std::cout << out.str() << std::flush;
 }
