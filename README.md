@@ -8,11 +8,11 @@ Replace placeholders before you submit.
 
 | | Name | UID |
 |--|------|-----|
-| A (Leader) | `<Name>` | `<UID>` |
+| A (Leader) | `YU Zhen Kai` | `3035483313` |
 | B | `Zhang Shui` | `3036588735` |
-| C | `<Name>` | `<UID>` |
-| D | `<Name>` | `<UID>` |
-| E | `<Name>` | `<UID>` |
+| C | `Liang Chenzhi ` | `3036567377` |
+| D | `Yu Peilin` | `3036567547` |
+| E | `Qiu Tianhao` | `3036480971` |
 
 ## Work distribution
 
