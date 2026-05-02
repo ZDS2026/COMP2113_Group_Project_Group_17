@@ -65,11 +65,11 @@ Together, (1) gives varied dungeons each play; (2)–(3) hold that state safely 
 
 ## Non-standard C/C++ libraries
 
-**None.** The game is built with **ISO C++17** and the **C++ standard library only** (for example `<iostream>`, `<fstream>`, `<string>`, `<vector>`, `<cstdlib>` for `rand`/`srand`, etc.). No third-party or course-“non-standard” libraries are linked or vendored in this repo, so **every listed feature** runs on that baseline.
+**None.** The game is built with **ISO C++11** and the **C++ standard library only** (for example `<iostream>`, `<fstream>`, `<string>`, `<vector>`, `<cstdlib>` for `rand`/`srand`, etc.). No third-party or course-“non-standard” libraries are linked or vendored in this repo, so **every listed feature** runs on that baseline.
 
 ## Requirements
 
-- C++17 compiler (`g++` recommended)  
+- C++11 compiler (`g++` recommended)  
 
 ## Build (quick start)
 
@@ -88,7 +88,7 @@ make
 ```powershell
 cd new
 $src = (Get-ChildItem -Filter "*.cpp" | ForEach-Object { $_.FullName })
-g++ -std=c++17 -Wall -Wextra -g $src -o mini_magic_tower.exe
+g++ -std=c++11 -Wall -Wextra -g $src -o mini_magic_tower.exe
 .\mini_magic_tower.exe
 ```
 

@@ -1,5 +1,5 @@
 CXX      = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -g
+CXXFLAGS = -std=c++11 -Wall -Wextra -g
 SRCDIR   = src
 TARGET   = magictower
 

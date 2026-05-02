@@ -36,6 +36,6 @@ make clean && make
 
 On Windows without `make`, you can compile directly:
 ```bash
-g++ -std=c++17 -Wall -Wextra -g src/*.cpp -o magictower.exe
+g++ -std=c++11 -Wall -Wextra -g src/*.cpp -o magictower.exe
 ./magictower.exe
 ```

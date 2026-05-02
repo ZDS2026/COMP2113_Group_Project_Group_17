@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -g
+CXXFLAGS = -std=c++11 -Wall -Wextra -g
 TARGET = mini_magic_tower
 SRCS = main.cpp game.cpp common.cpp difficulty.cpp map.cpp renderer.cpp io.cpp input.cpp
 OBJS = $(SRCS:.cpp=.o)
